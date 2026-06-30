@@ -48,11 +48,16 @@ var dashboardHTML []byte
 //go:embed preview.html
 var previewHTML []byte
 
+//go:embed favicon.svg
+var faviconSVG []byte
+
 const previewMaxBytes = 1 << 20 // 1 MiB
 
 func (a *ControlAPI) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", a.getHealthz)
+	mux.HandleFunc("GET /favicon.svg", a.getFavicon)
+	mux.HandleFunc("GET /favicon.ico", a.getFavicon)
 	mux.HandleFunc("GET /status", a.protect(a.getStatus))
 	mux.HandleFunc("POST /config", a.protect(a.postConfig))
 	mux.HandleFunc("POST /reset", a.protect(a.postReset))
@@ -115,6 +120,12 @@ func (a *ControlAPI) getHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
+}
+
+func (a *ControlAPI) getFavicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(faviconSVG)
 }
 
 func (a *ControlAPI) getStatus(w http.ResponseWriter, r *http.Request) {
