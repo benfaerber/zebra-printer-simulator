@@ -20,11 +20,15 @@
   .controls button:hover { background: #f9fafb; }
   .controls button.active { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-  .card { background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; }
+  .card { background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; position: relative; }
   .card img { width: 100%; display: block; background: #fff; image-rendering: pixelated; }
   .card-body { padding: 12px; }
   .card-body .filename { font-weight: 600; font-size: 0.85rem; word-break: break-all; }
   .card-body .meta { color: #6b7280; font-size: 0.75rem; margin-top: 4px; }
+  .card .delete-btn { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: none; background: rgba(17, 24, 39, 0.65); color: #fff; font-size: 1rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s ease, background 0.15s ease; }
+  .card:hover .delete-btn { opacity: 1; }
+  .card .delete-btn:hover { background: #dc2626; }
+  .card .delete-btn:focus { opacity: 1; outline: 2px solid #2563eb; outline-offset: 2px; }
   .empty { text-align: center; padding: 60px 20px; color: #9ca3af; }
   .empty p { font-size: 1.1rem; margin-bottom: 4px; }
   .auto-refresh { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #6b7280; margin-bottom: 16px; }
@@ -141,6 +145,7 @@ function renderLabels(labels) {
     const sizeKB = (l.size_bytes / 1024).toFixed(1);
     const dims = l.width && l.height ? `${l.width} x ${l.height} px` : '';
     return `<div class="card">
+      <button class="delete-btn" data-filename="${esc(l.filename)}" title="Delete label" aria-label="Delete ${esc(l.filename)}">&times;</button>
       <a href="${esc(l.url)}" target="_blank"><img src="${esc(l.url)}" alt="${esc(l.filename)}" loading="lazy"></a>
       <div class="card-body">
         <div class="filename">${esc(l.filename)}</div>
@@ -150,6 +155,26 @@ function renderLabels(labels) {
   });
 
   el.innerHTML = `<div class="grid">${cards.join('')}</div>`;
+  el.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteLabel(btn.dataset.filename));
+  });
+}
+
+async function deleteLabel(filename) {
+  if (!filename) return;
+  if (!confirm(`Delete ${filename}?`)) return;
+  try {
+    const res = await fetch(`/jobs/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      const msg = await res.text();
+      alert(`Delete failed: ${msg || res.statusText}`);
+      return;
+    }
+    fetchLabels();
+  } catch (e) {
+    console.error('Delete failed', e);
+    alert('Delete failed: network error');
+  }
 }
 
 function esc(s) {

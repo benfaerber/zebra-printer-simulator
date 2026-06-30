@@ -62,6 +62,7 @@ func (a *ControlAPI) Handler() http.Handler {
 	mux.HandleFunc("POST /config", a.protect(a.postConfig))
 	mux.HandleFunc("POST /reset", a.protect(a.postReset))
 	mux.HandleFunc("GET /jobs", a.protect(a.getJobs))
+	mux.HandleFunc("DELETE /jobs/{filename}", a.protect(a.deleteJob))
 	mux.HandleFunc("GET /metrics", a.protect(a.getMetrics))
 	mux.HandleFunc("GET /preview", a.protect(a.getPreview))
 	mux.HandleFunc("POST /preview", a.protect(a.postPreview))
@@ -229,6 +230,39 @@ func (a *ControlAPI) getJobs(w http.ResponseWriter, r *http.Request) {
 		"labels": labels,
 		"count":  len(labels),
 	})
+}
+
+func (a *ControlAPI) deleteJob(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("filename")
+	if !isSafeLabelName(name) {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(a.outputDir, name)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		slog.Warn("delete failed", "name", name, "err", err)
+		http.Error(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	slog.Info("label deleted", "name", name)
+	writeJSON(w, map[string]interface{}{"status": "deleted", "filename": name})
+}
+
+func isSafeLabelName(name string) bool {
+	if name == "" || filepath.Ext(name) != ".png" {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		return false
+	}
+	if filepath.Base(name) != name {
+		return false
+	}
+	return true
 }
 
 func (a *ControlAPI) getMetrics(w http.ResponseWriter, r *http.Request) {
