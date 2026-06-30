@@ -36,6 +36,19 @@
   .header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
   .header-row a { color: #2563eb; text-decoration: none; font-size: 0.85rem; }
   .header-row a:hover { text-decoration: underline; }
+  .card img { cursor: zoom-in; }
+  .viewer { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); display: none; align-items: center; justify-content: center; z-index: 1000; user-select: none; }
+  .viewer.open { display: flex; }
+  .viewer-stage { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: grab; }
+  .viewer-stage.dragging { cursor: grabbing; }
+  .viewer-stage img { position: absolute; top: 50%; left: 50%; transform-origin: center center; max-width: none; image-rendering: pixelated; will-change: transform; }
+  .viewer-toolbar { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; background: rgba(17, 24, 39, 0.85); padding: 6px; border-radius: 8px; }
+  .viewer-toolbar button { background: transparent; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; min-width: 36px; }
+  .viewer-toolbar button:hover { background: rgba(255, 255, 255, 0.15); }
+  .viewer-toolbar .zoom-level { color: #9ca3af; padding: 6px 8px; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  .viewer-close { position: absolute; top: 16px; right: 16px; background: rgba(17, 24, 39, 0.85); color: #fff; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; }
+  .viewer-close:hover { background: #dc2626; }
+  .viewer-filename { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: #d1d5db; font-size: 0.85rem; background: rgba(17, 24, 39, 0.85); padding: 6px 12px; border-radius: 4px; max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -64,9 +77,143 @@
 
 <div id="content"></div>
 
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Label viewer">
+  <div class="viewer-stage" id="viewerStage">
+    <img id="viewerImage" alt="">
+  </div>
+  <div class="viewer-toolbar">
+    <button id="viewerZoomOut" title="Zoom out (-)">&minus;</button>
+    <span class="zoom-level" id="viewerZoomLevel">100%</span>
+    <button id="viewerZoomIn" title="Zoom in (+)">+</button>
+    <button id="viewerRotate" title="Rotate 90&deg; (r)">&#x21bb;</button>
+    <button id="viewerReset" title="Reset (0)">Reset</button>
+  </div>
+  <div class="viewer-filename" id="viewerFilename"></div>
+  <button class="viewer-close" id="viewerClose" title="Close (Esc)" aria-label="Close">&times;</button>
+</div>
+
 <script>
 const state = {};
 let refreshTimer = null;
+
+class LabelViewer {
+  static MIN_SCALE = 0.1;
+  static MAX_SCALE = 16;
+  static ZOOM_STEP = 1.25;
+  static WHEEL_ZOOM_STEP = 1.1;
+
+  constructor() {
+    this.root = document.getElementById('viewer');
+    this.stage = document.getElementById('viewerStage');
+    this.image = document.getElementById('viewerImage');
+    this.zoomLevel = document.getElementById('viewerZoomLevel');
+    this.filenameEl = document.getElementById('viewerFilename');
+    this.scale = 1;
+    this.rotation = 0;
+    this.tx = 0;
+    this.ty = 0;
+    this.dragging = false;
+    this.dragStart = null;
+    this.bind();
+  }
+
+  bind() {
+    document.getElementById('viewerZoomIn').addEventListener('click', () => this.zoom(LabelViewer.ZOOM_STEP));
+    document.getElementById('viewerZoomOut').addEventListener('click', () => this.zoom(1 / LabelViewer.ZOOM_STEP));
+    document.getElementById('viewerRotate').addEventListener('click', () => this.rotate());
+    document.getElementById('viewerReset').addEventListener('click', () => this.resetTransform());
+    document.getElementById('viewerClose').addEventListener('click', () => this.close());
+    this.root.addEventListener('click', e => { if (e.target === this.root) this.close(); });
+    this.stage.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+    this.stage.addEventListener('mousedown', e => this.onDragStart(e));
+    window.addEventListener('mousemove', e => this.onDragMove(e));
+    window.addEventListener('mouseup', () => this.onDragEnd());
+    window.addEventListener('keydown', e => this.onKey(e));
+  }
+
+  open(url, filename) {
+    this.image.src = url;
+    this.image.alt = filename;
+    this.filenameEl.textContent = filename;
+    this.resetTransform();
+    this.root.classList.add('open');
+  }
+
+  close() {
+    this.root.classList.remove('open');
+    this.image.src = '';
+  }
+
+  isOpen() {
+    return this.root.classList.contains('open');
+  }
+
+  resetTransform() {
+    this.scale = 1;
+    this.rotation = 0;
+    this.tx = 0;
+    this.ty = 0;
+    this.applyTransform();
+  }
+
+  applyTransform() {
+    this.image.style.transform =
+      `translate(-50%, -50%) translate(${this.tx}px, ${this.ty}px) rotate(${this.rotation}deg) scale(${this.scale})`;
+    this.zoomLevel.textContent = `${Math.round(this.scale * 100)}%`;
+  }
+
+  zoom(factor) {
+    const next = this.scale * factor;
+    this.scale = Math.min(LabelViewer.MAX_SCALE, Math.max(LabelViewer.MIN_SCALE, next));
+    this.applyTransform();
+  }
+
+  rotate() {
+    this.rotation = (this.rotation + 90) % 360;
+    this.applyTransform();
+  }
+
+  onWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? LabelViewer.WHEEL_ZOOM_STEP : 1 / LabelViewer.WHEEL_ZOOM_STEP;
+    this.zoom(factor);
+  }
+
+  onDragStart(e) {
+    if (e.button !== 0) return;
+    this.dragging = true;
+    this.dragStart = { x: e.clientX - this.tx, y: e.clientY - this.ty };
+    this.stage.classList.add('dragging');
+  }
+
+  onDragMove(e) {
+    if (!this.dragging) return;
+    this.tx = e.clientX - this.dragStart.x;
+    this.ty = e.clientY - this.dragStart.y;
+    this.applyTransform();
+  }
+
+  onDragEnd() {
+    if (!this.dragging) return;
+    this.dragging = false;
+    this.stage.classList.remove('dragging');
+  }
+
+  onKey(e) {
+    if (!this.isOpen()) return;
+    switch (e.key) {
+      case 'Escape': this.close(); break;
+      case '+': case '=': this.zoom(LabelViewer.ZOOM_STEP); break;
+      case '-': case '_': this.zoom(1 / LabelViewer.ZOOM_STEP); break;
+      case 'r': case 'R': this.rotate(); break;
+      case '0': this.resetTransform(); break;
+      default: return;
+    }
+    e.preventDefault();
+  }
+}
+
+const viewer = new LabelViewer();
 
 async function fetchStatus() {
   try {
@@ -146,7 +293,7 @@ function renderLabels(labels) {
     const dims = l.width && l.height ? `${l.width} x ${l.height} px` : '';
     return `<div class="card">
       <button class="delete-btn" data-filename="${esc(l.filename)}" title="Delete label" aria-label="Delete ${esc(l.filename)}">&times;</button>
-      <a href="${esc(l.url)}" target="_blank"><img src="${esc(l.url)}" alt="${esc(l.filename)}" loading="lazy"></a>
+      <img src="${esc(l.url)}" alt="${esc(l.filename)}" loading="lazy" data-url="${esc(l.url)}" data-filename="${esc(l.filename)}">
       <div class="card-body">
         <div class="filename">${esc(l.filename)}</div>
         <div class="meta">${esc(l.timestamp)} &middot; ${sizeKB} KB${dims ? ' &middot; ' + dims : ''}</div>
@@ -157,6 +304,9 @@ function renderLabels(labels) {
   el.innerHTML = `<div class="grid">${cards.join('')}</div>`;
   el.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', () => deleteLabel(btn.dataset.filename));
+  });
+  el.querySelectorAll('.card img').forEach(img => {
+    img.addEventListener('click', () => viewer.open(img.dataset.url, img.dataset.filename));
   });
 }
 
