@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -94,4 +95,26 @@ func (r *Renderer) RenderZPL(data []byte) (string, error) {
 	}
 
 	return outputPath, nil
+}
+
+func (r *Renderer) RenderPreview(data []byte, w io.Writer) error {
+	labels, err := r.parser.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parse ZPL: %w", err)
+	}
+	if len(labels) == 0 {
+		return fmt.Errorf("no labels found in ZPL data")
+	}
+
+	size := detectLabelSize(data, r.labelSize, r.dpmm)
+	opts := drawers.DrawerOptions{
+		LabelWidthMm:  size.WidthMm,
+		LabelHeightMm: size.HeightMm,
+		Dpmm:          r.dpmm,
+	}
+
+	if err := r.drawer.DrawLabelAsPng(labels[0], w, opts); err != nil {
+		return fmt.Errorf("render PNG: %w", err)
+	}
+	return nil
 }

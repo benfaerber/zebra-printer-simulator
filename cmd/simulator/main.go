@@ -2,17 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/joho/godotenv"
 	"github.com/trueleafmarket-dg/dg-print/printer-simulator/internal"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	loadDotenv()
 
 	cfg, err := internal.LoadConfig()
 	if err != nil {
@@ -51,6 +56,7 @@ func main() {
 
 	controlAPI := internal.NewControlAPI(internal.ControlAPIOptions{
 		State:         state,
+		Renderer:      renderer,
 		OutputDir:     cfg.OutputDir,
 		BasicAuthUser: cfg.BasicAuthUser,
 		BasicAuthPass: cfg.BasicAuthPass,
@@ -71,6 +77,21 @@ func main() {
 	<-ctx.Done()
 	slog.Info("shutting down simulator")
 	httpServer.Close()
+}
+
+func loadDotenv() {
+	path := os.Getenv("ENV_FILE")
+	if path == "" {
+		path = ".env"
+	}
+	if err := godotenv.Load(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return
+		}
+		slog.Warn("failed to load env file", "path", path, "err", err)
+		return
+	}
+	slog.Info("loaded env file", "path", path)
 }
 
 func logConfig(cfg internal.Config) {

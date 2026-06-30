@@ -28,11 +28,17 @@
   .empty p { font-size: 1.1rem; margin-bottom: 4px; }
   .auto-refresh { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #6b7280; margin-bottom: 16px; }
   .auto-refresh input { accent-color: #3b82f6; }
+  .header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .header-row a { color: #2563eb; text-decoration: none; font-size: 0.85rem; }
+  .header-row a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
-<h1>Printer Simulator</h1>
+<div class="header-row">
+  <h1>Printer Simulator</h1>
+  <a href="/preview">ZPL Preview &rarr;</a>
+</div>
 <p class="subtitle">Rendered labels appear here as they are printed.</p>
 
 <div class="status-bar" id="statusBar"></div>

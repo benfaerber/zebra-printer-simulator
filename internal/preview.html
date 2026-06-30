@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZPL Preview &middot; Printer Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; color: #1f2937; display: flex; flex-direction: column; }
+  header { padding: 16px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 1.15rem; }
+  header nav a { color: #2563eb; text-decoration: none; font-size: 0.85rem; margin-left: 12px; }
+  header nav a:hover { text-decoration: underline; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: #6b7280; }
+  .toolbar button { padding: 6px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.8rem; }
+  .toolbar button:hover { background: #f9fafb; }
+  .toolbar button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .toolbar button.primary:hover { background: #1d4ed8; }
+  .toolbar label { display: inline-flex; align-items: center; gap: 4px; }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #e5e7eb; min-height: 0; }
+  .pane { background: #fff; display: flex; flex-direction: column; min-height: 0; }
+  .pane-header { padding: 8px 16px; border-bottom: 1px solid #e5e7eb; font-size: 0.8rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center; }
+  textarea { flex: 1; width: 100%; padding: 16px; border: 0; outline: none; resize: none; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.85rem; line-height: 1.5; background: #fafafa; }
+  .preview { flex: 1; overflow: auto; padding: 24px; display: flex; align-items: flex-start; justify-content: center; background: #f9fafb; }
+  .preview img { max-width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1); image-rendering: pixelated; background: #fff; }
+  .placeholder { color: #9ca3af; font-size: 0.9rem; padding: 40px; text-align: center; }
+  .error { color: #991b1b; background: #fee2e2; padding: 12px 16px; font-size: 0.85rem; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-width: 100%; }
+  .status { font-size: 0.75rem; color: #6b7280; }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ZPL Preview</h1>
+    <nav>
+      <a href="/">&larr; Dashboard</a>
+    </nav>
+  </div>
+  <div class="toolbar">
+    <label><input type="checkbox" id="autoRender" checked> Auto-render</label>
+    <button id="renderBtn" class="primary">Render</button>
+    <button id="loadSampleBtn">Sample</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+</header>
+
+<main>
+  <section class="pane">
+    <div class="pane-header"><span>ZPL Source</span><span class="status" id="srcStatus"></span></div>
+    <textarea id="zpl" spellcheck="false" placeholder="Paste ZPL here, e.g.&#10;^XA&#10;^FO50,50^A0N,40,40^FDHello^FS&#10;^XZ"></textarea>
+  </section>
+  <section class="pane">
+    <div class="pane-header"><span>Preview</span><span class="status" id="renderStatus"></span></div>
+    <div class="preview" id="preview">
+      <div class="placeholder">Type some ZPL to see a preview.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const SAMPLE = '^XA\n^CF0,40\n^FO50,50^FDPrinter Simulator^FS\n^CF0,28\n^FO50,110^FDZPL preview page^FS\n^FO50,160^GB700,3,3^FS\n^FO50,180^BY3\n^BCN,100,Y,N,N^FD123456789^FS\n^XZ\n';
+
+const $zpl = document.getElementById('zpl');
+const $preview = document.getElementById('preview');
+const $renderBtn = document.getElementById('renderBtn');
+const $loadSampleBtn = document.getElementById('loadSampleBtn');
+const $clearBtn = document.getElementById('clearBtn');
+const $autoRender = document.getElementById('autoRender');
+const $srcStatus = document.getElementById('srcStatus');
+const $renderStatus = document.getElementById('renderStatus');
+
+const STORAGE_KEY = 'zpl-preview-source';
+let debounceTimer = null;
+let lastObjectURL = null;
+let inFlight = null;
+
+function renderPlaceholder(msg) {
+  $preview.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'placeholder';
+  d.textContent = msg;
+  $preview.appendChild(d);
+}
+
+function renderError(msg) {
+  $preview.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'error';
+  d.textContent = msg;
+  $preview.appendChild(d);
+}
+
+function setPreviewImage(url) {
+  $preview.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = 'ZPL preview';
+  $preview.appendChild(img);
+}
+
+function revokeLast() {
+  if (lastObjectURL) {
+    URL.revokeObjectURL(lastObjectURL);
+    lastObjectURL = null;
+  }
+}
+
+async function renderNow() {
+  const body = $zpl.value;
+  if (!body.trim()) {
+    revokeLast();
+    renderPlaceholder('Type some ZPL to see a preview.');
+    $renderStatus.textContent = '';
+    return;
+  }
+
+  if (inFlight) inFlight.abort();
+  const controller = new AbortController();
+  inFlight = controller;
+  $renderStatus.textContent = 'rendering…';
+
+  try {
+    const res = await fetch('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      renderError(text || ('HTTP ' + res.status));
+      $renderStatus.textContent = 'error';
+      return;
+    }
+    const blob = await res.blob();
+    revokeLast();
+    lastObjectURL = URL.createObjectURL(blob);
+    setPreviewImage(lastObjectURL);
+    $renderStatus.textContent = 'ok';
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    renderError(String(err));
+    $renderStatus.textContent = 'error';
+  } finally {
+    if (inFlight === controller) inFlight = null;
+  }
+}
+
+function scheduleRender() {
+  $srcStatus.textContent = $zpl.value.length + ' chars';
+  localStorage.setItem(STORAGE_KEY, $zpl.value);
+  if (!$autoRender.checked) return;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(renderNow, 400);
+}
+
+$zpl.addEventListener('input', scheduleRender);
+$renderBtn.addEventListener('click', renderNow);
+$loadSampleBtn.addEventListener('click', () => {
+  $zpl.value = SAMPLE;
+  scheduleRender();
+  renderNow();
+});
+$clearBtn.addEventListener('click', () => {
+  $zpl.value = '';
+  scheduleRender();
+  renderNow();
+});
+
+const saved = localStorage.getItem(STORAGE_KEY);
+$zpl.value = saved || SAMPLE;
+$srcStatus.textContent = $zpl.value.length + ' chars';
+renderNow();
+</script>
+
+</body>
+</html>

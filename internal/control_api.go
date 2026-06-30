@@ -1,11 +1,13 @@
 package internal
 
 import (
+	"bytes"
 	"crypto/subtle"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +18,7 @@ import (
 
 type ControlAPI struct {
 	state     *PrinterState
+	renderer  *Renderer
 	outputDir string
 	authUser  string
 	authPass  string
@@ -23,6 +26,7 @@ type ControlAPI struct {
 
 type ControlAPIOptions struct {
 	State         *PrinterState
+	Renderer      *Renderer
 	OutputDir     string
 	BasicAuthUser string
 	BasicAuthPass string
@@ -31,6 +35,7 @@ type ControlAPIOptions struct {
 func NewControlAPI(opts ControlAPIOptions) *ControlAPI {
 	return &ControlAPI{
 		state:     opts.State,
+		renderer:  opts.Renderer,
 		outputDir: opts.OutputDir,
 		authUser:  opts.BasicAuthUser,
 		authPass:  opts.BasicAuthPass,
@@ -40,6 +45,11 @@ func NewControlAPI(opts ControlAPIOptions) *ControlAPI {
 //go:embed dashboard.html
 var dashboardHTML []byte
 
+//go:embed preview.html
+var previewHTML []byte
+
+const previewMaxBytes = 1 << 20 // 1 MiB
+
 func (a *ControlAPI) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", a.getHealthz)
@@ -48,6 +58,8 @@ func (a *ControlAPI) Handler() http.Handler {
 	mux.HandleFunc("POST /reset", a.protect(a.postReset))
 	mux.HandleFunc("GET /jobs", a.protect(a.getJobs))
 	mux.HandleFunc("GET /metrics", a.protect(a.getMetrics))
+	mux.HandleFunc("GET /preview", a.protect(a.getPreview))
+	mux.HandleFunc("POST /preview", a.protect(a.postPreview))
 	mux.HandleFunc("GET /", a.protect(a.getDashboard))
 	mux.Handle("GET /images/", a.protectHandler(http.StripPrefix("/images/",
 		http.FileServer(http.Dir(a.outputDir)))))
@@ -253,6 +265,35 @@ func boolToInt(b bool) int {
 func (a *ControlAPI) getDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(dashboardHTML)
+}
+
+func (a *ControlAPI) getPreview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(previewHTML)
+}
+
+func (a *ControlAPI) postPreview(w http.ResponseWriter, r *http.Request) {
+	if a.renderer == nil {
+		http.Error(w, "preview unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, previewMaxBytes))
+	if err != nil {
+		http.Error(w, "request body too large or unreadable", http.StatusBadRequest)
+		return
+	}
+	if len(body) == 0 {
+		http.Error(w, "empty ZPL body", http.StatusBadRequest)
+		return
+	}
+	var buf bytes.Buffer
+	if err := a.renderer.RenderPreview(body, &buf); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(buf.Bytes())
 }
 
 func readPNGDimensions(path string) (int, int) {
