@@ -1,0 +1,65 @@
+package internal
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestPrinterState_DefaultHealthy(t *testing.T) {
+	s := NewPrinterState()
+	resp := s.GenerateHSResponse()
+
+	if !strings.Contains(resp, ",0,0,") {
+		t.Error("default state should have no error flags")
+	}
+}
+
+func TestPrinterState_SetError(t *testing.T) {
+	s := NewPrinterState()
+	s.SetError("paper_out", true)
+
+	resp := s.GenerateHSResponse()
+	// Line 1: \x02030,1, ... (paper out = 1)
+	if !strings.Contains(resp, "030,1,") {
+		t.Errorf("expected paper_out flag in response, got: %q", resp)
+	}
+}
+
+func TestPrinterState_LabelCount(t *testing.T) {
+	s := NewPrinterState()
+	if s.LabelCount() != 0 {
+		t.Errorf("expected initial label count 0, got %d", s.LabelCount())
+	}
+
+	s.IncrementLabelCount()
+	s.IncrementLabelCount()
+
+	if s.LabelCount() != 2 {
+		t.Errorf("expected label count 2, got %d", s.LabelCount())
+	}
+}
+
+func TestPrinterState_Snapshot(t *testing.T) {
+	s := NewPrinterState()
+	s.SetError("head_up", true)
+
+	snap := s.Snapshot()
+	if snap["head_up"] != true {
+		t.Error("expected head_up=true in snapshot")
+	}
+	if snap["paper_out"] != false {
+		t.Error("expected paper_out=false in snapshot")
+	}
+}
+
+func TestPrinterState_SGDToggle(t *testing.T) {
+	s := NewPrinterState()
+	if !s.SGDEnabled() {
+		t.Error("SGD should be enabled by default")
+	}
+
+	s.SetSGDEnabled(false)
+	if s.SGDEnabled() {
+		t.Error("SGD should be disabled after toggle")
+	}
+}
