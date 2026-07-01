@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -30,24 +29,4 @@ func ClassifyInput(data string) CommandType {
 	}
 
 	return CommandUnknown
-}
-
-func HandleSGDCommand(data string, state *PrinterState) string {
-	if !state.SGDEnabled() {
-		return "?\r\n"
-	}
-
-	if strings.Contains(data, `"odometer.total_label_count"`) {
-		return fmt.Sprintf("\"%d\"\r\n", state.LabelCount())
-	}
-
-	if strings.Contains(data, `"head.resolution.in_dpi"`) {
-		return "\"203\"\r\n"
-	}
-
-	if strings.Contains(data, `"ezpl.print_width"`) {
-		return "\"832\"\r\n"
-	}
-
-	return "?\r\n"
 }

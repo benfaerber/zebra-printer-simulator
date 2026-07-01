@@ -8,7 +8,25 @@ import (
 var (
 	pwPattern = regexp.MustCompile(`\^PW(\d+)`)
 	llPattern = regexp.MustCompile(`\^LL(\d+)`)
+	pqPattern = regexp.MustCompile(`\^PQ(\d+)`)
 )
+
+// maxPrintQuantity caps the copies honored from a single ^PQ command so a
+// malformed or hostile job cannot flood the output directory.
+const maxPrintQuantity = 100
+
+// detectPrintQuantity reads the copy count from a ^PQ command, defaulting to a
+// single copy and clamping to maxPrintQuantity.
+func detectPrintQuantity(data []byte) int {
+	q := extractFirstInt(pqPattern, string(data))
+	if q < 1 {
+		return 1
+	}
+	if q > maxPrintQuantity {
+		return maxPrintQuantity
+	}
+	return q
+}
 
 func detectLabelSize(data []byte, fallback LabelSize, dpmm int) LabelSize {
 	if dpmm <= 0 {

@@ -82,7 +82,7 @@
 
 <div class="auto-refresh">
   <input type="checkbox" id="autoRefresh" checked>
-  <label for="autoRefresh">Auto-refresh every 3s</label>
+  <label for="autoRefresh">Auto-refresh every 3s (fallback when live updates are unavailable)</label>
 </div>
 
 <div id="content"></div>
@@ -373,20 +373,40 @@ function refresh() {
   fetchLabels();
 }
 
+let sseConnected = false;
+
+function startPolling() {
+  if (refreshTimer || sseConnected) return;
+  if (!document.getElementById('autoRefresh').checked) return;
+  refreshTimer = setInterval(refresh, 3000);
+}
+
+function stopPolling() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
 function setupAutoRefresh() {
   const cb = document.getElementById('autoRefresh');
-  cb.addEventListener('change', () => {
-    if (cb.checked) {
-      refreshTimer = setInterval(refresh, 3000);
-    } else {
-      clearInterval(refreshTimer);
-    }
-  });
-  refreshTimer = setInterval(refresh, 3000);
+  cb.addEventListener('change', () => cb.checked ? startPolling() : stopPolling());
+  startPolling();
+}
+
+// Live updates via server-sent events. When the stream is connected, polling
+// is unnecessary; if it drops, polling resumes as a fallback.
+function connectEvents() {
+  if (!window.EventSource) return;
+  const es = new EventSource('/events');
+  es.onopen = () => { sseConnected = true; stopPolling(); };
+  es.onmessage = () => refresh();
+  es.onerror = () => { sseConnected = false; startPolling(); };
 }
 
 refresh();
 setupAutoRefresh();
+connectEvents();
 </script>
 </body>
 </html>

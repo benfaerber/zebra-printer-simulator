@@ -14,12 +14,15 @@ The simulator targets the surface that most ZPL-emitting integrations actually
 hit:
 
 - Raw ZPL printing over a TCP socket (default port `19100`, the Zebra
-  convention).
+  convention), including multi-label jobs and `^PQ` print quantities.
 - The `~HS` Host Status response, returned as three Zebra-style framed lines.
-- A small subset of SGD `! U1 getvar` queries (label counter, head DPI, print
-  width).
+- SGD `! U1 getvar` queries (label counter, head DPI, print width, friendly
+  name, media status, firmware) reported from live config, plus `setvar`
+  commands accepted silently as a real printer does.
 - Fault-flag injection (paper out, paused, head up, ribbon out, under/over
   temperature) so client code can be exercised against unhappy printer states.
+  Blocking faults actually hold incoming jobs, which print once the fault
+  clears — so a client can watch a job stall on "paper out" and resume.
 
 Rendering is delegated to [`github.com/ingridhq/zebrash`](https://github.com/ingridhq/zebrash);
 the simulator wraps it with the network protocol, state machine, and dashboard.
@@ -121,6 +124,7 @@ The HTTP control plane is served on `HTTP_HOST:HTTP_PORT`.
 | `POST` | `/reset`   | basic auth   | Clear counters, fault flags, and the output directory. Useful in CI.     |
 | `GET`  | `/jobs`    | basic auth   | JSON list of rendered labels, newest first, with dimensions and sizes.   |
 | `GET`  | `/metrics` | basic auth   | Prometheus text-format metrics (label totals, faults, render failures).  |
+| `GET`  | `/events`  | basic auth   | Server-sent events stream; emits on every print, fault toggle, or reset. |
 | `GET`  | `/images/` | basic auth   | Static file server over `OUTPUT_DIR` (used by the dashboard's `<img>`).  |
 
 When `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` are unset, every route is open.
@@ -194,7 +198,8 @@ Webhook failures are logged but never block or fail the rendering job.
 
 ## Dashboard
 
-The browser dashboard at `/` auto-refreshes every 3 seconds. It shows:
+The browser dashboard at `/` updates live over a server-sent-events stream
+(`/events`), falling back to 3-second polling if the stream drops. It shows:
 
 - A status chip strip (Ready / Error, label counter, buffer depth, and any
   active fault flags).
@@ -215,11 +220,14 @@ internal/config.go           # Config struct + env-var loader
 internal/tcp_server.go       # TCP listener, buffered framing, command dispatch
 internal/zpl_handler.go      # input classifier (ZPL / ~HS / SGD), SGD responder
 internal/status.go           # PrinterState: counters, fault flags, ~HS encoder
+internal/printer.go          # Printer: serial rendering + hold queue for faults
 internal/renderer.go         # zebrash wrapper: ZPL -> PNG -> OUTPUT_DIR
-internal/size_detector.go    # parse ^PW / ^LL out of incoming ZPL
+internal/sgd.go              # SGDResponder: getvar/setvar answers from config
+internal/events.go           # EventHub: fan-out backing the /events SSE stream
+internal/size_detector.go    # parse ^PW / ^LL / ^PQ out of incoming ZPL
 internal/retention.go        # OutputRetention: cap PNG count in OUTPUT_DIR
 internal/webhook.go          # async POST to WEBHOOK_URL on label render
-internal/control_api.go      # HTTP handlers, basic auth, /metrics, /reset
+internal/control_api.go      # HTTP handlers, basic auth, /metrics, /reset, /events
 internal/dashboard.html      # embedded single-page dashboard
 testdata/*.zpl               # sample ZPL formats for manual smoke testing
 demo.zpl                     # minimal one-label demo

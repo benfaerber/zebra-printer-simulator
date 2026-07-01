@@ -52,6 +52,33 @@ func TestPrinterState_Snapshot(t *testing.T) {
 	}
 }
 
+func TestPrinterState_CanPrint(t *testing.T) {
+	s := NewPrinterState()
+	if !s.CanPrint() {
+		t.Error("fresh printer should be able to print")
+	}
+
+	blocking := []string{"paper_out", "head_up", "ribbon_out", "over_temp", "paused"}
+	for _, flag := range blocking {
+		s := NewPrinterState()
+		s.SetError(flag, true)
+		if s.CanPrint() {
+			t.Errorf("%s should block printing", flag)
+		}
+		if s.BlockingFault() != flag {
+			t.Errorf("expected blocking fault %q, got %q", flag, s.BlockingFault())
+		}
+	}
+}
+
+func TestPrinterState_UnderTempDoesNotBlock(t *testing.T) {
+	s := NewPrinterState()
+	s.SetError("under_temp", true)
+	if !s.CanPrint() {
+		t.Error("under_temp is a warning and should not block printing")
+	}
+}
+
 func TestPrinterState_SGDToggle(t *testing.T) {
 	s := NewPrinterState()
 	if !s.SGDEnabled() {

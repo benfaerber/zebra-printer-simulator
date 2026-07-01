@@ -14,11 +14,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type ControlAPI struct {
 	state     *PrinterState
 	renderer  *Renderer
+	printer   *Printer
+	events    *EventHub
 	outputDir string
 	authUser  string
 	authPass  string
@@ -27,6 +30,8 @@ type ControlAPI struct {
 type ControlAPIOptions struct {
 	State         *PrinterState
 	Renderer      *Renderer
+	Printer       *Printer
+	Events        *EventHub
 	OutputDir     string
 	BasicAuthUser string
 	BasicAuthPass string
@@ -36,6 +41,8 @@ func NewControlAPI(opts ControlAPIOptions) *ControlAPI {
 	return &ControlAPI{
 		state:     opts.State,
 		renderer:  opts.Renderer,
+		printer:   opts.Printer,
+		events:    opts.Events,
 		outputDir: opts.OutputDir,
 		authUser:  opts.BasicAuthUser,
 		authPass:  opts.BasicAuthPass,
@@ -66,6 +73,7 @@ func (a *ControlAPI) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", a.protect(a.getMetrics))
 	mux.HandleFunc("GET /preview", a.protect(a.getPreview))
 	mux.HandleFunc("POST /preview", a.protect(a.postPreview))
+	mux.HandleFunc("GET /events", a.protect(a.getEvents))
 	mux.HandleFunc("GET /", a.protect(a.getDashboard))
 	mux.Handle("GET /images/", a.protectHandler(http.StripPrefix("/images/",
 		http.FileServer(http.Dir(a.outputDir)))))
@@ -140,6 +148,8 @@ type configRequest struct {
 }
 
 func (a *ControlAPI) postConfig(w http.ResponseWriter, r *http.Request) {
+	defer a.afterStateChange()
+
 	var req configRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -169,12 +179,31 @@ func (a *ControlAPI) postConfig(w http.ResponseWriter, r *http.Request) {
 
 func (a *ControlAPI) postReset(w http.ResponseWriter, r *http.Request) {
 	a.state.Reset()
+	if a.printer != nil {
+		a.printer.DiscardHeld()
+	}
 	deleted := a.clearOutputDir()
 	slog.Info("simulator reset", "deleted_files", deleted)
+	a.publish()
 	writeJSON(w, map[string]interface{}{
 		"status":        "reset",
 		"deleted_files": deleted,
 	})
+}
+
+// afterStateChange resumes any held jobs whose blocking fault just cleared and
+// notifies dashboard listeners that state moved.
+func (a *ControlAPI) afterStateChange() {
+	if a.printer != nil {
+		a.printer.Flush()
+	}
+	a.publish()
+}
+
+func (a *ControlAPI) publish() {
+	if a.events != nil {
+		a.events.Publish()
+	}
 }
 
 func (a *ControlAPI) clearOutputDir() int {
@@ -351,6 +380,48 @@ func (a *ControlAPI) postPreview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(buf.Bytes())
+}
+
+// getEvents streams server-sent events so the dashboard updates the moment a
+// label prints or a fault toggles. Each event carries no payload; the client
+// re-fetches /status and /jobs on receipt.
+func (a *ControlAPI) getEvents(w http.ResponseWriter, r *http.Request) {
+	if a.events == nil {
+		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ch := a.events.Subscribe()
+	defer a.events.Unsubscribe(ch)
+
+	fmt.Fprint(w, "retry: 3000\n\n")
+	flusher.Flush()
+
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+			fmt.Fprint(w, "data: update\n\n")
+			flusher.Flush()
+		case <-heartbeat.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 func readPNGDimensions(path string) (int, int) {

@@ -45,6 +45,36 @@ func (s *PrinterState) SetError(flag string, enabled bool) {
 	}
 }
 
+// CanPrint reports whether the printer is currently able to render labels.
+// A blocking fault (paper out, head up, ribbon out, over temperature) or a
+// pause holds printing; under_temp is a warning only and does not block.
+func (s *PrinterState) CanPrint() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return !s.paperOut && !s.headUp && !s.ribbonOut && !s.overTemp && !s.paused
+}
+
+// BlockingFault returns the name of the first active fault preventing
+// printing, or an empty string when the printer can print.
+func (s *PrinterState) BlockingFault() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	switch {
+	case s.paperOut:
+		return "paper_out"
+	case s.headUp:
+		return "head_up"
+	case s.ribbonOut:
+		return "ribbon_out"
+	case s.overTemp:
+		return "over_temp"
+	case s.paused:
+		return "paused"
+	default:
+		return ""
+	}
+}
+
 func (s *PrinterState) SetSGDEnabled(enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
