@@ -1,5 +1,7 @@
 # Zebra Printer Simulator
 
+[![CI](https://github.com/benfaerber/zebra-printer-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/benfaerber/zebra-printer-simulator/actions/workflows/ci.yml)
+
 A virtual Zebra-style label printer. It listens on a TCP port like a real
 networked thermal printer, accepts ZPL II jobs, renders each label to a PNG,
 and exposes a small HTTP control plane (status JSON, fault injection, and a
