@@ -6,6 +6,8 @@ and exposes a small HTTP control plane (status JSON, fault injection, and a
 browser dashboard) so applications can be developed and tested without
 physical hardware.
 
+![Zebra Printer Simulator dashboard](images/zebra-simulator.png)
+
 The simulator targets the surface that most ZPL-emitting integrations actually
 hit:
 
