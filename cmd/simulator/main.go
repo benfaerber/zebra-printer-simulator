@@ -67,7 +67,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("control API listening", "addr", cfg.HTTPAddr())
+		slog.Info("control API listening", "addr", cfg.HTTPAddr(), "url", cfg.HTTPURL())
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("HTTP server error", "err", err)
 			os.Exit(1)

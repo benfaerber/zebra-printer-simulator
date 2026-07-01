@@ -66,6 +66,16 @@ func LoadConfig() (Config, error) {
 
 func (c Config) TCPAddr() string  { return fmt.Sprintf("%s:%d", c.TCPHost, c.TCPPort) }
 func (c Config) HTTPAddr() string { return fmt.Sprintf("%s:%d", c.HTTPHost, c.HTTPPort) }
+
+// HTTPURL is a clickable address for the dashboard. An empty bind host means
+// "all interfaces", so localhost is the reachable host to surface in logs.
+func (c Config) HTTPURL() string {
+	host := c.HTTPHost
+	if host == "" {
+		host = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%d", host, c.HTTPPort)
+}
 func (c Config) BasicAuthEnabled() bool {
 	return c.BasicAuthUser != "" && c.BasicAuthPass != ""
 }
