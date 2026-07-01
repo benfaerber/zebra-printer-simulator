@@ -1,10 +1,12 @@
-# Printer Simulator
+# Zebra Printer Simulator
 
 A virtual Zebra-style label printer. It listens on a TCP port like a real
 networked thermal printer, accepts ZPL II jobs, renders each label to a PNG,
 and exposes a small HTTP control plane (status JSON, fault injection, and a
 browser dashboard) so applications can be developed and tested without
 physical hardware.
+
+![Zebra Printer Simulator dashboard](images/zebra-simulator.png)
 
 The simulator targets the surface that most ZPL-emitting integrations actually
 hit:
@@ -68,7 +70,6 @@ All configuration is via environment variables. Defaults are shown.
 | `DPI`              | `203`       | Print resolution. One of `203` (8 dpmm), `300` (12 dpmm), `600` (24 dpmm).      |
 | `BASIC_AUTH_USER`  | _(unset)_   | Username for HTTP basic auth. Must be set together with `BASIC_AUTH_PASS`.      |
 | `BASIC_AUTH_PASS`  | _(unset)_   | Password for HTTP basic auth. When unset, the HTTP API is unauthenticated.      |
-| `PRINT_DELAY_MS`   | `0`         | Milliseconds to sleep before rendering each label. Simulates a slow printer.    |
 | `MAX_OUTPUT_FILES` | `0`         | Maximum PNGs to keep in `OUTPUT_DIR`. Oldest are deleted past this. `0` = no cap. |
 | `WEBHOOK_URL`      | _(unset)_   | If set, POST a JSON event to this URL after every successful label render.      |
 
@@ -114,7 +115,7 @@ The HTTP control plane is served on `HTTP_HOST:HTTP_PORT`.
 | `GET`  | `/`        | basic auth   | HTML dashboard (embedded; see `internal/dashboard.html`).                |
 | `GET`  | `/healthz` | always open  | Plain-text `ok` for liveness probes.                                     |
 | `GET`  | `/status`  | basic auth   | JSON snapshot of printer state.                                          |
-| `POST` | `/config`  | basic auth   | Toggle a fault flag or the SGD-enabled bit.                              |
+| `POST` | `/config`  | basic auth   | Toggle a fault flag or the SGD-enabled bit, or set the print speed.      |
 | `POST` | `/reset`   | basic auth   | Clear counters, fault flags, and the output directory. Useful in CI.     |
 | `GET`  | `/jobs`    | basic auth   | JSON list of rendered labels, newest first, with dimensions and sizes.   |
 | `GET`  | `/metrics` | basic auth   | Prometheus text-format metrics (label totals, faults, render failures).  |
@@ -138,7 +139,8 @@ credentials.
   "label_count": 12,
   "formats_in_buffer": 0,
   "render_failures": 0,
-  "sgd_enabled": true
+  "sgd_enabled": true,
+  "print_speed": "fast"
 }
 ```
 
@@ -149,6 +151,16 @@ are the six fault flags above plus `sgd` (toggles `sgd_enabled`). Example:
 curl -X POST localhost:8081/config \
   -H 'content-type: application/json' \
   -d '{"flag":"paper_out","enabled":true}'
+```
+
+To change the print speed, send `{ "flag": "speed", "speed": "<name>" }` where
+`<name>` is `fast`, `normal`, or `slow`. Slower speeds add an artificial render
+delay per label. Example:
+
+```sh
+curl -X POST localhost:8081/config \
+  -H 'content-type: application/json' \
+  -d '{"flag":"speed","speed":"slow"}'
 ```
 
 Once a fault is set, the next `~HS` response from the TCP port reflects it.
@@ -185,6 +197,9 @@ The browser dashboard at `/` auto-refreshes every 3 seconds. It shows:
 - A status chip strip (Ready / Error, label counter, buffer depth, and any
   active fault flags).
 - Toggle buttons for each fault flag (POST to `/config` under the hood).
+- A print-speed selector (`Fast`, `Normal`, `Slow`). Slower speeds add an
+  artificial per-label render delay to mimic a physical printer's feed rate.
+  The choice is applied live via `/config` (`{"flag":"speed","speed":"slow"}`).
 - A grid of every PNG in `OUTPUT_DIR`, newest first, with filename, timestamp,
   size, and pixel dimensions.
 

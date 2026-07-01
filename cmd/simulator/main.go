@@ -30,11 +30,11 @@ func main() {
 	state := internal.NewPrinterState()
 	retention := internal.NewOutputRetention(cfg.OutputDir, cfg.MaxOutputFiles)
 	renderer := internal.NewRenderer(internal.RendererOptions{
-		OutputDir:  cfg.OutputDir,
-		LabelSize:  cfg.LabelSize,
-		Dpmm:       cfg.Dpmm,
-		PrintDelay: cfg.PrintDelay,
-		Retention:  retention,
+		OutputDir: cfg.OutputDir,
+		LabelSize: cfg.LabelSize,
+		Dpmm:      cfg.Dpmm,
+		State:     state,
+		Retention: retention,
 	})
 	webhook := internal.NewWebhook(cfg.WebhookURL)
 
@@ -67,7 +67,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("control API listening", "addr", cfg.HTTPAddr())
+		slog.Info("control API listening", "addr", cfg.HTTPAddr(), "url", cfg.HTTPURL())
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("HTTP server error", "err", err)
 			os.Exit(1)
@@ -101,7 +101,6 @@ func logConfig(cfg internal.Config) {
 		"output_dir", cfg.OutputDir,
 		"dpmm", cfg.Dpmm,
 		"basic_auth", cfg.BasicAuthEnabled(),
-		"print_delay", cfg.PrintDelay,
 		"max_output_files", cfg.MaxOutputFiles,
 		"webhook", cfg.WebhookURL != "",
 	)

@@ -23,38 +23,38 @@ var (
 )
 
 type Renderer struct {
-	outputDir  string
-	labelSize  LabelSize
-	dpmm       int
-	printDelay time.Duration
-	retention  *OutputRetention
-	parser     *zebrash.Parser
-	drawer     *zebrash.Drawer
+	outputDir string
+	labelSize LabelSize
+	dpmm      int
+	state     *PrinterState
+	retention *OutputRetention
+	parser    *zebrash.Parser
+	drawer    *zebrash.Drawer
 }
 
 type RendererOptions struct {
-	OutputDir  string
-	LabelSize  LabelSize
-	Dpmm       int
-	PrintDelay time.Duration
-	Retention  *OutputRetention
+	OutputDir string
+	LabelSize LabelSize
+	Dpmm      int
+	State     *PrinterState
+	Retention *OutputRetention
 }
 
 func NewRenderer(opts RendererOptions) *Renderer {
 	return &Renderer{
-		outputDir:  opts.OutputDir,
-		labelSize:  opts.LabelSize,
-		dpmm:       opts.Dpmm,
-		printDelay: opts.PrintDelay,
-		retention:  opts.Retention,
-		parser:     zebrash.NewParser(),
-		drawer:     zebrash.NewDrawer(),
+		outputDir: opts.OutputDir,
+		labelSize: opts.LabelSize,
+		dpmm:      opts.Dpmm,
+		state:     opts.State,
+		retention: opts.Retention,
+		parser:    zebrash.NewParser(),
+		drawer:    zebrash.NewDrawer(),
 	}
 }
 
 func (r *Renderer) RenderZPL(data []byte) (string, error) {
-	if r.printDelay > 0 {
-		time.Sleep(r.printDelay)
+	if delay := r.state.PrintDelay(); delay > 0 {
+		time.Sleep(delay)
 	}
 
 	labels, err := r.parser.Parse(data)

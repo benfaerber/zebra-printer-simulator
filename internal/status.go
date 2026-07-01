@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type PrinterState struct {
@@ -17,10 +18,11 @@ type PrinterState struct {
 	formatsInBuffer int
 	renderFailures  int
 	sgdEnabled      bool
+	printSpeed      PrintSpeed
 }
 
 func NewPrinterState() *PrinterState {
-	return &PrinterState{sgdEnabled: true}
+	return &PrinterState{sgdEnabled: true, printSpeed: DefaultPrintSpeed}
 }
 
 func (s *PrinterState) SetError(flag string, enabled bool) {
@@ -53,6 +55,24 @@ func (s *PrinterState) SGDEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.sgdEnabled
+}
+
+func (s *PrinterState) SetPrintSpeed(speed PrintSpeed) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.printSpeed = speed
+}
+
+func (s *PrinterState) PrintSpeed() PrintSpeed {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.printSpeed
+}
+
+func (s *PrinterState) PrintDelay() time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.printSpeed.Delay()
 }
 
 func (s *PrinterState) IncrementLabelCount() {
@@ -104,6 +124,7 @@ func (s *PrinterState) Reset() {
 	s.formatsInBuffer = 0
 	s.renderFailures = 0
 	s.sgdEnabled = true
+	s.printSpeed = DefaultPrintSpeed
 }
 
 func (s *PrinterState) GenerateHSResponse() string {
@@ -149,6 +170,7 @@ func (s *PrinterState) Snapshot() map[string]interface{} {
 		"formats_in_buffer": s.formatsInBuffer,
 		"render_failures":   s.renderFailures,
 		"sgd_enabled":       s.sgdEnabled,
+		"print_speed":       string(s.printSpeed),
 	}
 }
 

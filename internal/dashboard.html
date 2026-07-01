@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Printer Simulator</title>
+<title>Zebra Printer Simulator</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -19,6 +19,9 @@
   .controls button { padding: 6px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.8rem; }
   .controls button:hover { background: #f9fafb; }
   .controls button.active { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+  .speed-controls { align-items: center; }
+  .speed-controls .control-label { font-size: 0.8rem; font-weight: 600; color: #6b7280; margin-right: 4px; }
+  .speed-controls button.active { background: #eff6ff; border-color: #93c5fd; color: #1e40af; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
   .card { background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; position: relative; }
   .card img { width: 100%; display: block; background: #fff; image-rendering: pixelated; }
@@ -54,7 +57,7 @@
 <body>
 
 <div class="header-row">
-  <h1>Printer Simulator</h1>
+  <h1>Zebra Printer Simulator</h1>
   <a href="/preview">ZPL Preview &rarr;</a>
 </div>
 <p class="subtitle">Rendered labels appear here as they are printed.</p>
@@ -68,6 +71,13 @@
   <button onclick="toggleFlag('ribbon_out')">Ribbon Out</button>
   <button onclick="toggleFlag('under_temp')">Under Temp</button>
   <button onclick="toggleFlag('over_temp')">Over Temp</button>
+</div>
+
+<div class="controls speed-controls" id="speedControls">
+  <span class="control-label">Print Speed</span>
+  <button data-speed="fast" onclick="setSpeed('fast')">Fast</button>
+  <button data-speed="normal" onclick="setSpeed('normal')">Normal</button>
+  <button data-speed="slow" onclick="setSpeed('slow')">Slow</button>
 </div>
 
 <div class="auto-refresh">
@@ -113,6 +123,7 @@ class LabelViewer {
     this.tx = 0;
     this.ty = 0;
     this.dragging = false;
+    this.moved = false;
     this.dragStart = null;
     this.bind();
   }
@@ -124,6 +135,7 @@ class LabelViewer {
     document.getElementById('viewerReset').addEventListener('click', () => this.resetTransform());
     document.getElementById('viewerClose').addEventListener('click', () => this.close());
     this.root.addEventListener('click', e => { if (e.target === this.root) this.close(); });
+    this.stage.addEventListener('click', e => { if (e.target === this.stage && !this.moved) this.close(); });
     this.stage.addEventListener('wheel', e => this.onWheel(e), { passive: false });
     this.stage.addEventListener('mousedown', e => this.onDragStart(e));
     window.addEventListener('mousemove', e => this.onDragMove(e));
@@ -182,12 +194,14 @@ class LabelViewer {
   onDragStart(e) {
     if (e.button !== 0) return;
     this.dragging = true;
+    this.moved = false;
     this.dragStart = { x: e.clientX - this.tx, y: e.clientY - this.ty };
     this.stage.classList.add('dragging');
   }
 
   onDragMove(e) {
     if (!this.dragging) return;
+    this.moved = true;
     this.tx = e.clientX - this.dragStart.x;
     this.ty = e.clientY - this.dragStart.y;
     this.applyTransform();
@@ -222,6 +236,7 @@ async function fetchStatus() {
     Object.assign(state, data);
     renderStatus(data);
     updateButtons(data);
+    updateSpeedButtons(data);
   } catch (e) {
     console.error('Status fetch failed', e);
   }
@@ -237,6 +252,10 @@ function renderStatus(s) {
     : '<span class="status-chip chip-err">Error</span>');
 
   chips.push(`<span class="status-chip chip-info">Labels: ${s.label_count}</span>`);
+
+  if (s.print_speed) {
+    chips.push(`<span class="status-chip chip-info">Speed: ${s.print_speed}</span>`);
+  }
 
   if (s.formats_in_buffer > 0) {
     chips.push(`<span class="status-chip chip-info">Buffer: ${s.formats_in_buffer}</span>`);
@@ -266,6 +285,22 @@ async function toggleFlag(flag) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ flag, enabled: !current }),
+  });
+  fetchStatus();
+}
+
+function updateSpeedButtons(s) {
+  const buttons = document.querySelectorAll('#speedControls button');
+  buttons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.speed === s.print_speed);
+  });
+}
+
+async function setSpeed(speed) {
+  await fetch('/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ flag: 'speed', speed }),
   });
   fetchStatus();
 }
