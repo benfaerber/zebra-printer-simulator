@@ -11,28 +11,25 @@ import (
 )
 
 type TCPServer struct {
-	addr     string
-	state    *PrinterState
-	renderer *Renderer
-	webhook  Webhook
+	addr    string
+	state   *PrinterState
+	printer *Printer
+	sgd     *SGDResponder
 }
 
 type TCPServerOptions struct {
-	Addr     string
-	State    *PrinterState
-	Renderer *Renderer
-	Webhook  Webhook
+	Addr    string
+	State   *PrinterState
+	Printer *Printer
+	SGD     *SGDResponder
 }
 
 func NewTCPServer(opts TCPServerOptions) *TCPServer {
-	if opts.Webhook == nil {
-		opts.Webhook = NoopWebhook{}
-	}
 	return &TCPServer{
-		addr:     opts.Addr,
-		state:    opts.State,
-		renderer: opts.Renderer,
-		webhook:  opts.Webhook,
+		addr:    opts.Addr,
+		state:   opts.State,
+		printer: opts.Printer,
+		sgd:     opts.SGD,
 	}
 }
 
@@ -185,28 +182,16 @@ func (s *TCPServer) handleHS(conn net.Conn) {
 }
 
 func (s *TCPServer) handleSGD(conn net.Conn, data string) {
-	response := HandleSGDCommand(data, s.state)
-	_, err := conn.Write([]byte(response))
-	if err != nil {
+	response := s.sgd.Handle(data)
+	if response == "" {
+		return
+	}
+	if _, err := conn.Write([]byte(response)); err != nil {
 		slog.Warn("failed to write SGD response", "err", err)
 	}
 	slog.Info("sent SGD response", "response", strings.TrimSpace(response))
 }
 
 func (s *TCPServer) handleZPL(data string) {
-	s.state.SetFormatsInBuffer(s.state.FormatsInBuffer() + 1)
-
-	path, err := s.renderer.RenderZPL([]byte(data))
-	if err != nil {
-		slog.Warn("render failed", "err", err)
-		s.state.SetFormatsInBuffer(s.state.FormatsInBuffer() - 1)
-		s.state.IncrementRenderFailures()
-		return
-	}
-
-	s.state.IncrementLabelCount()
-	s.state.SetFormatsInBuffer(s.state.FormatsInBuffer() - 1)
-	slog.Info("rendered label", "path", path, "label_count", s.state.LabelCount())
-
-	s.webhook.Notify(eventFromPath(path, s.state.LabelCount()))
+	s.printer.Submit([]byte(data))
 }

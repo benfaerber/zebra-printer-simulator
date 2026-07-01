@@ -37,15 +37,23 @@ func main() {
 		Retention: retention,
 	})
 	webhook := internal.NewWebhook(cfg.WebhookURL)
+	events := internal.NewEventHub()
+	printer := internal.NewPrinter(internal.PrinterOptions{
+		State:    state,
+		Renderer: renderer,
+		Webhook:  webhook,
+		Events:   events,
+	})
+	sgd := internal.NewSGDResponder(state, cfg.DPI(), cfg.PrintWidthDots(), "Zebra Printer Simulator")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	tcpServer := internal.NewTCPServer(internal.TCPServerOptions{
-		Addr:     cfg.TCPAddr(),
-		State:    state,
-		Renderer: renderer,
-		Webhook:  webhook,
+		Addr:    cfg.TCPAddr(),
+		State:   state,
+		Printer: printer,
+		SGD:     sgd,
 	})
 	go func() {
 		if err := tcpServer.Start(ctx); err != nil {
@@ -57,6 +65,8 @@ func main() {
 	controlAPI := internal.NewControlAPI(internal.ControlAPIOptions{
 		State:         state,
 		Renderer:      renderer,
+		Printer:       printer,
+		Events:        events,
 		OutputDir:     cfg.OutputDir,
 		BasicAuthUser: cfg.BasicAuthUser,
 		BasicAuthPass: cfg.BasicAuthPass,

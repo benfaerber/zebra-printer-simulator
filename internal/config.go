@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 )
@@ -78,6 +79,27 @@ func (c Config) HTTPURL() string {
 }
 func (c Config) BasicAuthEnabled() bool {
 	return c.BasicAuthUser != "" && c.BasicAuthPass != ""
+}
+
+// DPI reports the dots-per-inch matching the configured dot density, for SGD
+// queries that report resolution in DPI rather than dpmm.
+func (c Config) DPI() int {
+	switch c.Dpmm {
+	case 8:
+		return 203
+	case 12:
+		return 300
+	case 24:
+		return 600
+	default:
+		return int(math.Round(float64(c.Dpmm) * 25.4))
+	}
+}
+
+// PrintWidthDots is the label width expressed in dots, used for the SGD
+// ezpl.print_width query.
+func (c Config) PrintWidthDots() int {
+	return int(math.Round(c.LabelSize.WidthMm / 25.4 * float64(c.DPI())))
 }
 
 func parseDpmm(dpi string) (int, error) {
