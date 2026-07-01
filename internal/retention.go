@@ -8,8 +8,8 @@ import (
 )
 
 type OutputRetention struct {
-	dir   string
-	keep  int
+	dir  string
+	keep int
 }
 
 func NewOutputRetention(dir string, keep int) *OutputRetention {
