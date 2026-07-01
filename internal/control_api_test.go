@@ -8,6 +8,40 @@ import (
 	"testing"
 )
 
+func TestControlAPI_SetPrintSpeed(t *testing.T) {
+	state := NewPrinterState()
+	api := NewControlAPI(ControlAPIOptions{State: state, OutputDir: t.TempDir()})
+
+	req := httptest.NewRequest(http.MethodPost, "/config",
+		strings.NewReader(`{"flag":"speed","speed":"slow"}`))
+	rec := httptest.NewRecorder()
+	api.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if state.PrintSpeed() != PrintSpeedSlow {
+		t.Errorf("expected print speed slow, got %q", state.PrintSpeed())
+	}
+}
+
+func TestControlAPI_RejectsInvalidPrintSpeed(t *testing.T) {
+	state := NewPrinterState()
+	api := NewControlAPI(ControlAPIOptions{State: state, OutputDir: t.TempDir()})
+
+	req := httptest.NewRequest(http.MethodPost, "/config",
+		strings.NewReader(`{"flag":"speed","speed":"turbo"}`))
+	rec := httptest.NewRecorder()
+	api.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid speed, got %d", rec.Code)
+	}
+	if state.PrintSpeed() != DefaultPrintSpeed {
+		t.Errorf("expected speed unchanged on rejection, got %q", state.PrintSpeed())
+	}
+}
+
 func TestControlAPI_NoAuthByDefault(t *testing.T) {
 	api := NewControlAPI(ControlAPIOptions{
 		State:     NewPrinterState(),

@@ -2,7 +2,6 @@ package internal
 
 import (
 	"testing"
-	"time"
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
@@ -22,9 +21,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 	if cfg.BasicAuthEnabled() {
 		t.Error("expected basic auth disabled by default")
-	}
-	if cfg.PrintDelay != 0 {
-		t.Errorf("expected zero print delay, got %v", cfg.PrintDelay)
 	}
 }
 
@@ -59,33 +55,13 @@ func TestLoadConfig_BasicAuthRequiresBoth(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_PrintDelay(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("PRINT_DELAY_MS", "250")
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.PrintDelay != 250*time.Millisecond {
-		t.Errorf("expected 250ms delay, got %v", cfg.PrintDelay)
-	}
-}
-
-func TestLoadConfig_NegativeValuesRejected(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("PRINT_DELAY_MS", "-1")
-	if _, err := LoadConfig(); err == nil {
-		t.Error("expected error for negative print delay")
-	}
-}
-
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"TCP_HOST", "TCP_PORT", "HTTP_HOST", "HTTP_PORT",
 		"OUTPUT_DIR", "LABEL_SIZE", "DPI",
 		"BASIC_AUTH_USER", "BASIC_AUTH_PASS",
-		"PRINT_DELAY_MS", "MAX_OUTPUT_FILES", "WEBHOOK_URL",
+		"MAX_OUTPUT_FILES", "WEBHOOK_URL",
 	} {
 		t.Setenv(k, "")
 	}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZPL Preview &middot; Printer Simulator</title>
+<title>ZPL Preview &middot; Zebra Printer Simulator</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -64,7 +64,7 @@
 </main>
 
 <script>
-const SAMPLE = '^XA\n^CF0,40\n^FO50,50^FDPrinter Simulator^FS\n^CF0,28\n^FO50,110^FDZPL preview page^FS\n^FO50,160^GB700,3,3^FS\n^FO50,180^BY3\n^BCN,100,Y,N,N^FD123456789^FS\n^XZ\n';
+const SAMPLE = '^XA\n^CF0,40\n^FO50,50^FDZebra Printer Simulator^FS\n^CF0,28\n^FO50,110^FDZPL preview page^FS\n^FO50,160^GB700,3,3^FS\n^FO50,180^BY3\n^BCN,100,Y,N,N^FD123456789^FS\n^XZ\n';
 
 const $zpl = document.getElementById('zpl');
 const $preview = document.getElementById('preview');

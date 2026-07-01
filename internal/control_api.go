@@ -136,6 +136,7 @@ func (a *ControlAPI) getStatus(w http.ResponseWriter, r *http.Request) {
 type configRequest struct {
 	Flag    string `json:"flag"`
 	Enabled bool   `json:"enabled"`
+	Speed   string `json:"speed"`
 }
 
 func (a *ControlAPI) postConfig(w http.ResponseWriter, r *http.Request) {
@@ -145,9 +146,20 @@ func (a *ControlAPI) postConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Flag == "sgd" {
+	switch req.Flag {
+	case "sgd":
 		a.state.SetSGDEnabled(req.Enabled)
-	} else {
+	case "speed":
+		speed, ok := ParsePrintSpeed(req.Speed)
+		if !ok {
+			http.Error(w, "invalid print speed", http.StatusBadRequest)
+			return
+		}
+		a.state.SetPrintSpeed(speed)
+		slog.Info("config updated", "flag", req.Flag, "speed", req.Speed)
+		writeJSON(w, a.state.Snapshot())
+		return
+	default:
 		a.state.SetError(req.Flag, req.Enabled)
 	}
 

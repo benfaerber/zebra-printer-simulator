@@ -30,11 +30,11 @@ func main() {
 	state := internal.NewPrinterState()
 	retention := internal.NewOutputRetention(cfg.OutputDir, cfg.MaxOutputFiles)
 	renderer := internal.NewRenderer(internal.RendererOptions{
-		OutputDir:  cfg.OutputDir,
-		LabelSize:  cfg.LabelSize,
-		Dpmm:       cfg.Dpmm,
-		PrintDelay: cfg.PrintDelay,
-		Retention:  retention,
+		OutputDir: cfg.OutputDir,
+		LabelSize: cfg.LabelSize,
+		Dpmm:      cfg.Dpmm,
+		State:     state,
+		Retention: retention,
 	})
 	webhook := internal.NewWebhook(cfg.WebhookURL)
 
@@ -101,7 +101,6 @@ func logConfig(cfg internal.Config) {
 		"output_dir", cfg.OutputDir,
 		"dpmm", cfg.Dpmm,
 		"basic_auth", cfg.BasicAuthEnabled(),
-		"print_delay", cfg.PrintDelay,
 		"max_output_files", cfg.MaxOutputFiles,
 		"webhook", cfg.WebhookURL != "",
 	)

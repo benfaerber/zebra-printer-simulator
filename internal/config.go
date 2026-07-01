@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
 
 type Config struct {
@@ -17,7 +16,6 @@ type Config struct {
 	Dpmm           int
 	BasicAuthUser  string
 	BasicAuthPass  string
-	PrintDelay     time.Duration
 	MaxOutputFiles int
 	WebhookURL     string
 }
@@ -26,14 +24,6 @@ func LoadConfig() (Config, error) {
 	dpmm, err := parseDpmm(envOrDefault("DPI", "203"))
 	if err != nil {
 		return Config{}, err
-	}
-
-	delayMs, err := envIntOrDefault("PRINT_DELAY_MS", 0)
-	if err != nil {
-		return Config{}, fmt.Errorf("PRINT_DELAY_MS: %w", err)
-	}
-	if delayMs < 0 {
-		return Config{}, fmt.Errorf("PRINT_DELAY_MS must be >= 0, got %d", delayMs)
 	}
 
 	maxFiles, err := envIntOrDefault("MAX_OUTPUT_FILES", 0)
@@ -69,7 +59,6 @@ func LoadConfig() (Config, error) {
 		Dpmm:           dpmm,
 		BasicAuthUser:  user,
 		BasicAuthPass:  pass,
-		PrintDelay:     time.Duration(delayMs) * time.Millisecond,
 		MaxOutputFiles: maxFiles,
 		WebhookURL:     os.Getenv("WEBHOOK_URL"),
 	}, nil
