@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, selectable-print-speed]
   pull_request:
 
 permissions:
